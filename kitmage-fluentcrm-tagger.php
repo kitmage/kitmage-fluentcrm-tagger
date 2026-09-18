@@ -5,7 +5,8 @@
  * Version:           1.0.0
  * Requires at least: 5.2
  * Requires PHP:      7.0
- * Author:            KitMage
+ * Author: Mike@KitMage
+ * Author URI: http://kitmage.com
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       kitmage-fluentcrm-tagger
