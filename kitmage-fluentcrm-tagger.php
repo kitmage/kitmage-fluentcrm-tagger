@@ -70,3 +70,153 @@ function kitmage_fluentcrm_tagger_handle_url_action() {
 	}
 }
 add_action( 'template_redirect', 'kitmage_fluentcrm_tagger_handle_url_action', 1 );
+
+/**
+ * Renders shortcode content according to the current contact's FluentCRM tags.
+ *
+ * @param array       $attributes Shortcode attributes.
+ * @param string|null $content    Enclosed shortcode content.
+ * @return string
+ */
+function kitmage_fluentcrm_tagger_render_restricted_content( $attributes, $content = null ) {
+	$attributes = shortcode_atts(
+		array(
+			'tag_id'   => '',
+			'mode'     => 'show',
+			'fallback' => 'hide',
+		),
+		$attributes,
+		'crm_restrict'
+	);
+
+	$expression = trim( (string) $attributes['tag_id'] );
+	$mode       = strtolower( trim( (string) $attributes['mode'] ) );
+	$fallback   = strtolower( trim( (string) $attributes['fallback'] ) );
+
+	if ( ! in_array( $mode, array( 'show', 'hide' ), true ) ) {
+		$mode = 'show';
+	}
+
+	if ( ! in_array( $fallback, array( 'show', 'hide' ), true ) ) {
+		$fallback = 'hide';
+	}
+
+	// An empty expression does not restrict the enclosed content.
+	if ( '' === $expression ) {
+		return do_shortcode( (string) $content );
+	}
+
+	$matches       = kitmage_fluentcrm_tagger_current_contact_matches( $expression, $fallback );
+	$should_render = 'hide' === $mode ? ! $matches : $matches;
+
+	return $should_render ? do_shortcode( (string) $content ) : '';
+}
+add_shortcode( 'crm_restrict', 'kitmage_fluentcrm_tagger_render_restricted_content' );
+
+/**
+ * Determines whether the current FluentCRM contact matches a tag expression.
+ *
+ * @param string $expression Tag expression to evaluate.
+ * @param string $fallback   Whether an unavailable contact should match: show or hide.
+ * @return bool
+ */
+function kitmage_fluentcrm_tagger_current_contact_matches( $expression, $fallback = 'hide' ) {
+	$fallback_match = 'show' === $fallback;
+
+	if ( ! is_user_logged_in() || ! function_exists( 'fluentcrm_get_current_contact' ) ) {
+		return $fallback_match;
+	}
+
+	$contact = fluentcrm_get_current_contact();
+
+	if ( ! $contact ) {
+		return $fallback_match;
+	}
+
+	$tag_ids = array();
+
+	try {
+		// Explicitly load the relationship because FluentCRM does not always preload it.
+		if ( method_exists( $contact, 'tags' ) ) {
+			$tags = $contact->tags()->get();
+		} elseif ( ! empty( $contact->tags ) ) {
+			$tags = $contact->tags;
+		} else {
+			$tags = array();
+		}
+
+		if ( is_array( $tags ) || $tags instanceof Traversable ) {
+			foreach ( $tags as $tag ) {
+				if ( isset( $tag->id ) ) {
+					$tag_ids[ (int) $tag->id ] = true;
+				}
+			}
+		}
+	} catch ( Throwable $exception ) {
+		return $fallback_match;
+	}
+
+	return kitmage_fluentcrm_tagger_evaluate_expression( $expression, $tag_ids );
+}
+
+/**
+ * Evaluates an OR/AND/NOT tag expression against a tag ID lookup table.
+ *
+ * Commas separate OR groups, plus signs combine AND terms, and an exclamation
+ * mark negates a term. For example, `3,4+5,!6` matches tag 3, both tags 4 and
+ * 5, or the absence of tag 6.
+ *
+ * @param string $expression Tag expression to evaluate.
+ * @param array  $tag_ids    Tag IDs keyed by integer ID.
+ * @return bool
+ */
+function kitmage_fluentcrm_tagger_evaluate_expression( $expression, array $tag_ids ) {
+	$expression = html_entity_decode( (string) $expression, ENT_QUOTES, 'UTF-8' );
+	$expression = preg_replace( '/\s+/', '', $expression );
+
+	if ( empty( $expression ) ) {
+		return false;
+	}
+
+	$or_groups = array_filter( explode( ',', $expression ), 'strlen' );
+
+	foreach ( $or_groups as $group ) {
+		$and_terms = array_filter( explode( '+', $group ), 'strlen' );
+
+		if ( empty( $and_terms ) ) {
+			continue;
+		}
+
+		$group_matches = true;
+
+		foreach ( $and_terms as $term ) {
+			$negated = isset( $term[0] ) && '!' === $term[0];
+
+			if ( $negated ) {
+				$term = substr( $term, 1 );
+			}
+
+			if ( '' === $term || ! ctype_digit( $term ) ) {
+				$group_matches = false;
+				break;
+			}
+
+			$has_tag = isset( $tag_ids[ (int) $term ] );
+
+			if ( $negated ) {
+				$has_tag = ! $has_tag;
+			}
+
+			if ( ! $has_tag ) {
+				$group_matches = false;
+				break;
+			}
+		}
+
+		if ( $group_matches ) {
+			return true;
+		}
+	}
+
+	return false;
+}
