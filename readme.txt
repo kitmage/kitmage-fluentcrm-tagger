@@ -54,6 +54,28 @@ as a match.
 An empty `tag_id` expression always renders the enclosed content. Nested
 shortcodes in rendered content are processed normally.
 
+= Redirecting contacts =
+
+Use `crm_tag_redirect` to redirect a logged-in contact when their tags match an
+expression:
+
+`[crm_tag_redirect tag_id="3,4&5,!6" destination="/contact/reach/reach-confirmation/"]`
+
+This shortcode uses the same expression rules as `crm_restrict`; both `&` and
+`+` may be used for AND. The required `destination` may be a site-relative path
+or an HTTP(S) URL. The optional `status` is `302` by default and may be set to
+`301`.
+
+The shortcode prevents a redirect when the current URL is already the
+destination. It uses a safe HTTP redirect if headers are still available. If
+page output has already started, it returns a JavaScript redirect with a
+`noscript` refresh and link fallback. Place the shortcode as early as possible
+in the page content or template to maximize the chance of an HTTP redirect.
+
+Only numeric tag IDs are supported. Parentheses and nested expression logic are
+not supported. External HTTP(S) destinations must also be permitted by
+WordPress's safe redirect host policy.
+
 == Installation ==
 
 1. Upload the plugin folder to `/wp-content/plugins/`.
@@ -61,9 +83,11 @@ shortcodes in rendered content are processed normally.
 3. Make sure FluentCRM is active and logged-in WordPress users are represented as FluentCRM contacts.
 4. Add `fcrm_tag` or `fcrm_untag` with a positive FluentCRM tag ID to a frontend URL.
 5. Optionally wrap content in a `crm_restrict` shortcode to show or hide it by tag expression.
+6. Optionally add a `crm_tag_redirect` shortcode to redirect contacts whose tags match.
 
 == Changelog ==
 
 = 1.0.0 =
 * Initial release.
 * Add the `crm_restrict` conditional-content shortcode.
+* Add the `crm_tag_redirect` conditional-redirect shortcode.

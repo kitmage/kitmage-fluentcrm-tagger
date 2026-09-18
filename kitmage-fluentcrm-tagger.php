@@ -173,6 +173,7 @@ function kitmage_fluentcrm_tagger_current_contact_matches( $expression, $fallbac
 function kitmage_fluentcrm_tagger_evaluate_expression( $expression, array $tag_ids ) {
 	$expression = html_entity_decode( (string) $expression, ENT_QUOTES, 'UTF-8' );
 	$expression = preg_replace( '/\s+/', '', $expression );
+	$expression = str_replace( '&', '+', $expression );
 
 	if ( empty( $expression ) ) {
 		return false;
@@ -220,3 +221,74 @@ function kitmage_fluentcrm_tagger_evaluate_expression( $expression, array $tag_i
 
 	return false;
 }
+
+/**
+ * Redirects matching FluentCRM contacts to a configured destination.
+ *
+ * @param array $attributes Shortcode attributes.
+ * @return string Redirect fallback markup, or an empty string.
+ */
+function kitmage_fluentcrm_tagger_render_redirect( $attributes ) {
+	$attributes = shortcode_atts(
+		array(
+			'tag_id'      => '',
+			'destination' => '',
+			'status'      => '302',
+		),
+		$attributes,
+		'crm_tag_redirect'
+	);
+
+	$expression  = trim( (string) $attributes['tag_id'] );
+	$destination = trim( (string) $attributes['destination'] );
+	$status      = 301 === (int) $attributes['status'] ? 301 : 302;
+
+	if ( '' === $expression || '' === $destination || ! is_user_logged_in() ) {
+		return '';
+	}
+
+	if ( ! kitmage_fluentcrm_tagger_current_contact_matches( $expression ) ) {
+		return '';
+	}
+
+	// Site-relative paths are resolved against the WordPress home URL.
+	if ( 0 === strpos( $destination, '/' ) && 0 !== strpos( $destination, '//' ) ) {
+		$destination = home_url( $destination );
+	}
+
+	$destination = esc_url_raw( $destination, array( 'http', 'https' ) );
+
+	if ( empty( $destination ) ) {
+		return '';
+	}
+
+	$host        = isset( $_SERVER['HTTP_HOST'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ) ) : '';
+	$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+	$current_url = ( is_ssl() ? 'https://' : 'http://' ) . $host . $request_uri;
+	$current_url = preg_replace( '#\?.*$#', '', $current_url );
+	$target_url  = preg_replace( '#\?.*$#', '', $destination );
+
+	if ( untrailingslashit( $current_url ) === untrailingslashit( $target_url ) ) {
+		return '';
+	}
+
+	if ( ! headers_sent() ) {
+		wp_safe_redirect( $destination, $status );
+		exit;
+	}
+
+	$destination_json = wp_json_encode( $destination );
+
+	if ( false === $destination_json ) {
+		return '';
+	}
+
+	return sprintf(
+		'<script>window.location.replace(%1$s);</script><noscript><meta http-equiv="refresh" content="%2$s"><p><a href="%3$s">%4$s</a></p></noscript>',
+		$destination_json,
+		esc_attr( '0;url=' . $destination ),
+		esc_url( $destination ),
+		esc_html__( 'Continue', 'kitmage-fluentcrm-tagger' )
+	);
+}
+add_shortcode( 'crm_tag_redirect', 'kitmage_fluentcrm_tagger_render_redirect' );
