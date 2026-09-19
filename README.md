@@ -1,105 +1,165 @@
 # KitMage FluentCRM Tagger
 
-KitMage FluentCRM Tagger connects logged-in WordPress users to their FluentCRM contact record. With it, you can:
+KitMage FluentCRM Tagger adds a small set of frontend tools for working with the current logged-in user's FluentCRM tags.
 
-- add or remove a FluentCRM tag when someone follows a link;
-- render Smart Links-style buttons that tag/untag and then redirect;
-- show or hide page content based on a contact's tags; and
-- redirect contacts based on their tags.
+It can:
 
-The plugin has no settings screen. You configure it with URL parameters and WordPress shortcodes.
+- add or remove FluentCRM tags from ordinary URLs;
+- render buttons that add or remove a tag and then redirect;
+- show or hide content based on FluentCRM tag conditions; and
+- redirect users based on FluentCRM tag conditions.
+
+The plugin has no settings screen. Everything is configured with URL query parameters and WordPress shortcodes.
 
 ## Requirements
 
 - WordPress 5.2 or later
 - PHP 7.0 or later
 - FluentCRM
-- A FluentCRM contact associated with each WordPress user who will use the links or shortcodes
+- A FluentCRM contact associated with the logged-in WordPress user
 
-All tag values in the examples are numeric FluentCRM tag IDs, not tag names. Replace the example domain, paths, and IDs with your own values.
+All tag values are numeric FluentCRM **tag IDs**, not tag names.
 
 ## Installation
 
 1. Upload the plugin folder to `/wp-content/plugins/`.
-2. In WordPress, go to **Plugins > Installed Plugins**.
-3. Activate **KitMage FluentCRM Tagger**.
-4. Confirm that FluentCRM is active and that the WordPress users involved have corresponding FluentCRM contacts.
+2. Activate **KitMage FluentCRM Tagger** in WordPress.
+3. Confirm FluentCRM is active.
+4. Confirm the WordPress users who will use these features have corresponding FluentCRM contacts.
 
-## Add and remove tags with links
+## Feature reference
 
-Tag-action links work on frontend pages for logged-in users. They update only the FluentCRM contact associated with the user who follows the link.
+| Feature | Syntax |
+| --- | --- |
+| Add tag from URL | `?fcrm_tag=4` |
+| Remove tag from URL | `?fcrm_untag=4` |
+| Tag-action button | `[crm_tag_button ...]` |
+| Conditional content | `[crm_restrict ...]...[/crm_restrict]` |
+| Conditional redirect | `[crm_tag_redirect ...]` |
+
+## Add or remove tags with URLs
+
+Tag actions run for logged-in frontend visitors and affect only the current user's FluentCRM contact.
 
 ### Add a tag
-
-Use the `fcrm_tag` query parameter to add a tag. This example adds tag `4`:
 
 ```text
 https://example.com/resources/?fcrm_tag=4
 ```
 
-You could use this as the destination of a button that lets a member opt into a topic:
-
-```html
-<a href="https://example.com/resources/?fcrm_tag=4">Follow product updates</a>
-```
+This adds FluentCRM tag `4`.
 
 ### Remove a tag
-
-Use the `fcrm_untag` query parameter to remove a tag. This example removes tag `4`:
 
 ```text
 https://example.com/preferences/?fcrm_untag=4
 ```
 
-For example:
+This removes FluentCRM tag `4`.
 
-```html
-<a href="https://example.com/preferences/?fcrm_untag=4">Stop product updates</a>
-```
-
-### Add and remove tags in one visit
-
-Include both parameters to change two tags at once:
+### Add and remove tags in one request
 
 ```text
 https://example.com/welcome/?fcrm_tag=8&fcrm_untag=4
 ```
 
-The plugin adds tag `8` first and then removes tag `4`. If both parameters contain the same ID, that tag will be removed at the end of the request.
+The add action runs first, followed by the remove action.
 
-> **Important:** Visiting one of these URLs changes contact data. Share action links only with people who should be able to perform that action on their own contact record.
+If both parameters contain the same tag ID, the tag will be removed at the end of the request.
 
-Tag actions are ignored when the visitor is logged out, the request is for a WordPress admin page, FluentCRM is unavailable, the user has no FluentCRM contact, or the tag ID is not a positive number.
+### Existing query strings
+
+If the destination already contains a query string, append the FluentCRM parameter with `&`:
+
+```text
+https://example.com/page/?source=email&fcrm_tag=4
+```
+
+### URL-action behavior
+
+URL actions are silently ignored when:
+
+- the visitor is logged out;
+- the request is for a WordPress admin page;
+- FluentCRM is unavailable;
+- the current user has no FluentCRM contact; or
+- the supplied tag ID is not a positive integer.
+
+These URL parameters intentionally act as frontend actions on the **current logged-in user's own contact record**.
 
 ## Tag-action buttons
 
-The plugin also includes the Aspen Smart Links button behavior. Existing crm_tag_button shortcode syntax can be used without changing your page content.
+Use `[crm_tag_button]` to render a button that adds or removes a FluentCRM tag and then continues to another URL.
 
-Add a tag and continue to another page:
+### Add a tag and continue
 
-    [crm_tag_button text="Next Lesson" action="add" tag_id="12" url="/lesson-2/"]
+```text
+[crm_tag_button text="Next Lesson" action="add" tag_id="12" url="/lesson-2/"]
+```
 
-Remove a tag:
+### Remove a tag and continue
 
-    [crm_tag_button text="Leave Program" action="remove" tag_id="12" url="/account/"]
+```text
+[crm_tag_button text="Leave Program" action="remove" tag_id="12" url="/account/"]
+```
 
-You may add one or more CSS classes with the class attribute:
+### Add CSS classes
 
-    [crm_tag_button text="Continue" action="add" tag_id="12" url="/next/" class="button button-primary"]
+```text
+[crm_tag_button text="Continue" action="add" tag_id="12" url="/next/" class="button button-primary"]
+```
 
-For internal URLs, the tag action is processed and the current tab redirects to the destination. For external HTTP/HTTPS URLs, the external destination is opened in a new tab while the current tab processes the tag action and returns to the current page.
+### Attributes
 
-Button actions are nonce-protected, only render for logged-in users, prevent double-submission in JavaScript, and fail silently if FluentCRM or the current contact is unavailable.
+| Attribute | Required | Description |
+| --- | --- | --- |
+| `text` | No | Button label. Defaults to `Continue`. |
+| `action` | Yes | `add` or `remove`. |
+| `tag_id` | Yes | Numeric FluentCRM tag ID. |
+| `url` | No | Destination. Defaults to `/`. |
+| `class` | No | Space-separated CSS classes added to the button. |
 
-Migration note: the shortcode name, asl_* request fields, AspenSmartLinks JavaScript object, and aspen_smart_links_tag_action / aspen_smart_links_handle_tag_action hooks are preserved for compatibility. The standalone Smart Links user-meta fallback and automatic contact-creation behavior are intentionally not included; FluentCRM remains the source of truth in this plugin.
+### Internal destinations
+
+For a site-relative destination:
+
+```text
+[crm_tag_button text="Continue" action="add" tag_id="12" url="/member-dashboard/"]
+```
+
+The plugin:
+
+1. submits the button action;
+2. updates the current contact's FluentCRM tag;
+3. redirects the current tab to the destination.
+
+### External destinations
+
+For an external HTTP or HTTPS URL:
+
+```text
+[crm_tag_button text="Open Resource" action="add" tag_id="12" url="https://example.org/resource/"]
+```
+
+The external URL is opened in a new tab while the current tab processes the tag action and returns to the current page.
+
+Opening the new tab is best-effort and remains subject to browser popup behavior.
+
+### Button behavior
+
+Tag-action buttons:
+
+- render only for logged-in users;
+- use a WordPress nonce for the tag-action request;
+- prevent accidental double submission in JavaScript;
+- display `Loading...` after submission; and
+- fail silently if FluentCRM or the current contact is unavailable.
 
 ## Show or hide content by tag
 
-Wrap content in the `[crm_restrict]` shortcode to control whether it appears. Shortcodes can be added in a Shortcode block, the classic editor, or another area that processes WordPress shortcodes.
+Use `[crm_restrict]` to conditionally render enclosed content.
 
-### Show content to contacts with a tag
-
-This content appears only when the current contact has tag `3`:
+### Show content when a tag is present
 
 ```text
 [crm_restrict tag_id="3"]
@@ -107,137 +167,306 @@ Download your member guide.
 [/crm_restrict]
 ```
 
-### Hide content from contacts with a tag
+The default `mode` is `show`.
 
-Set `mode="hide"` to reverse the result. This prompt appears only when the contact does **not** have tag `3`:
+### Hide content when a tag is present
 
 ```text
 [crm_restrict tag_id="3" mode="hide"]
-Join the member program to unlock the guide.
+This appears only when the user does not have tag 3.
 [/crm_restrict]
 ```
 
-The default mode is `show`.
+### Fallback behavior
 
-### Combine tag conditions
+By default, restricted content is hidden when the plugin cannot evaluate the current contact.
 
-Use these operators in `tag_id`:
-
-| Operator | Meaning | Example |
-| --- | --- | --- |
-| `,` | OR | `3,4` matches tag `3` or tag `4` |
-| `+` | AND | `4+5` matches contacts with both tag `4` and tag `5` |
-| `!` | NOT | `!6` matches contacts that do not have tag `6` |
-
-You can combine the operators. This example appears when a contact has tag `3`, has both tags `4` and `5`, **or** does not have tag `6`:
-
-```text
-[crm_restrict tag_id="3,4+5,!6"]
-Content for the matching audience.
-[/crm_restrict]
-```
-
-Each comma-separated group is an alternative. Every `+`-separated condition within a group must match. Parentheses and nested expressions are not supported.
-
-### Choose what happens when contact data is unavailable
-
-By default, restricted content stays hidden when the visitor is logged out, FluentCRM is unavailable, or the current user has no FluentCRM contact. Set `fallback="show"` to display it in those cases:
+You can change that with `fallback="show"`:
 
 ```text
 [crm_restrict tag_id="12" fallback="show"]
-This is visible to contacts with tag 12 and to visitors whose contact data cannot be checked.
+Visible to tag 12 and when contact data cannot be checked.
 [/crm_restrict]
 ```
 
-The fallback value acts as the expression result before `mode` is applied. For example, `mode="hide" fallback="show"` hides the content when contact data is unavailable.
+The fallback value acts as the expression result **before** `mode` is applied.
 
-An empty `tag_id` does not restrict content. Any shortcodes inside content that is displayed are processed normally.
-
-## Redirect contacts by tag
-
-Use `[crm_tag_redirect]` to send a logged-in contact to another location when their tags match. Place this shortcode as early as possible in the page content or template.
-
-### Redirect to a page on your site
-
-This example redirects contacts with tag `3` to a confirmation page:
+For example:
 
 ```text
-[crm_tag_redirect tag_id="3" destination="/contact/reach/reach-confirmation/"]
+[crm_restrict tag_id="12" mode="hide" fallback="show"]
+...
+[/crm_restrict]
 ```
 
-A destination beginning with a single `/` is resolved relative to your WordPress home URL.
+will hide the content when contact data is unavailable.
+
+### Attributes
+
+| Attribute | Default | Description |
+| --- | --- | --- |
+| `tag_id` | empty | Tag expression to evaluate. |
+| `mode` | `show` | `show` renders matching content; `hide` renders nonmatching content. |
+| `fallback` | `hide` | Expression result when the current contact cannot be evaluated. |
+
+An empty `tag_id` does not restrict the content.
+
+Nested shortcodes inside displayed content are processed normally.
+
+## Tag expressions
+
+Both `[crm_restrict]` and `[crm_tag_redirect]` support tag expressions.
+
+| Operator | Meaning | Example |
+| --- | --- | --- |
+| `,` | OR | `3,4` |
+| `+` | AND | `4+5` |
+| `!` | NOT | `!6` |
+
+Examples:
+
+```text
+3,4
+```
+
+Matches tag `3` **or** tag `4`.
+
+```text
+4+5
+```
+
+Matches contacts that have **both** tags `4` and `5`.
+
+```text
+4+!24
+```
+
+Matches contacts that have tag `4` and do **not** have tag `24`.
+
+```text
+3,4+5,!6
+```
+
+Matches any of these conditions:
+
+- tag `3`;
+- both tags `4` and `5`; or
+- absence of tag `6`.
+
+Each comma-separated group is an OR condition. Every `+`-separated term inside a group must match.
+
+The `&` character is also accepted as AND internally, but `+` is recommended in shortcode attributes.
+
+Parentheses and nested expressions are not supported.
+
+## Redirect users by tag
+
+Use `[crm_tag_redirect]` to redirect a logged-in user when their FluentCRM tags match an expression.
+
+### Basic redirect
+
+```text
+[crm_tag_redirect tag_id="3" destination="/member-dashboard/"]
+```
 
 ### Redirect using multiple conditions
-
-Redirect contacts who have both tag `4` and tag `5`, or who do not have tag `6`:
 
 ```text
 [crm_tag_redirect tag_id="4+5,!6" destination="/member-dashboard/"]
 ```
 
-Redirect expressions use the same `,`, `+`, and `!` rules as `[crm_restrict]`. The `&` character is also accepted as AND, although `+` is safer in shortcode content:
-
-```text
-[crm_tag_redirect tag_id="4&5" destination="/member-dashboard/"]
-```
-
-### Redirect to a full URL
-
-You may provide an HTTP or HTTPS URL:
+### Full URL
 
 ```text
 [crm_tag_redirect tag_id="9" destination="https://members.example.com/start/"]
 ```
 
-External destinations are subject to WordPress's safe redirect host policy, so use a host that your WordPress installation allows.
+External destinations are subject to WordPress safe-redirect host rules.
 
-### Make the redirect permanent
+### HTTP status
 
-Redirects use HTTP status `302` by default. Use `status="301"` only when the redirect should be permanently cached:
+Redirects use HTTP `302` by default.
+
+Use `status="301"` only when the redirect should be permanent:
 
 ```text
 [crm_tag_redirect tag_id="9" destination="/new-home/" status="301"]
 ```
 
-The shortcode does nothing for logged-out visitors, missing contacts, nonmatching tags, missing attributes, or a destination that is already the current page. When possible, it sends a normal HTTP redirect. If page output has already begun, it returns a JavaScript redirect with a no-JavaScript fallback instead.
+### Attributes
 
-## Common setup patterns
+| Attribute | Default | Description |
+| --- | --- | --- |
+| `tag_id` | empty | Tag expression to evaluate. |
+| `destination` | empty | Site-relative or HTTP/HTTPS destination. |
+| `status` | `302` | `302` or `301`. |
 
-### Opt in, then reveal content
+The shortcode does nothing when:
 
-1. Add an opt-in link to a page:
+- the visitor is logged out;
+- the current FluentCRM contact is unavailable;
+- the expression does not match;
+- required attributes are missing; or
+- the destination resolves to the current page.
 
-   ```html
-   <a href="https://example.com/course/?fcrm_tag=20">Unlock the course</a>
-   ```
+When headers are still available, the plugin sends a normal HTTP redirect. If output has already started, it returns a JavaScript redirect with a no-JavaScript fallback.
 
-2. Restrict the course content to tag `20`:
+## Common patterns
 
-   ```text
-   [crm_restrict tag_id="20"]
-   Welcome to the course.
-   [/crm_restrict]
-   ```
+### Button that records progress
 
-After a logged-in contact follows the link, the page loads with tag `20` attached and the restricted content can appear.
+```text
+[crm_tag_button text="Complete Lesson" action="add" tag_id="42" url="/lesson-2/"]
+```
+
+The user receives tag `42` and continues to the next lesson.
+
+### Unlock content after an action
+
+First add a tag:
+
+```html
+<a href="/course/?fcrm_tag=20">Unlock the course</a>
+```
+
+Then restrict the content:
+
+```text
+[crm_restrict tag_id="20"]
+Welcome to the course.
+[/crm_restrict]
+```
+
+### Show a completion message
+
+```text
+[crm_restrict tag_id="42"]
+You completed this lesson.
+[/crm_restrict]
+```
+
+### Require one tag and exclude another
+
+```text
+[crm_restrict tag_id="4+!24"]
+This content requires tag 4 and excludes tag 24.
+[/crm_restrict]
+```
 
 ### Route different audiences
-
-Add a redirect at the start of a general landing page:
 
 ```text
 [crm_tag_redirect tag_id="30" destination="/customers/"]
 [crm_tag_redirect tag_id="31" destination="/partners/"]
 ```
 
-Contacts with tag `30` go to the customer page. Contacts who do not match the first rule can then be evaluated by the second rule.
+The first matching redirect that executes will send the user to its destination.
+
+## FluentCRM behavior
+
+FluentCRM is the source of truth for this plugin.
+
+The plugin does **not** maintain a secondary tag list in WordPress user meta and does **not** automatically create a FluentCRM contact when one is missing.
+
+If the current WordPress user does not have an available FluentCRM contact, tag actions fail silently and conditional features use their documented fallback behavior.
+
+## Aspen Smart Links compatibility
+
+Version 1.1.0 incorporates the frontend Smart Links behavior directly into KitMage FluentCRM Tagger.
+
+Existing Smart Links shortcode content using:
+
+```text
+[crm_tag_button ...]
+```
+
+can continue to use the same shortcode syntax.
+
+For compatibility, the integrated button implementation also preserves:
+
+- the `asl_action`, `asl_tag_id`, `asl_redirect`, and `_aspen_smart_links_nonce` request fields;
+- the `AspenSmartLinks` JavaScript localization object;
+- the `aspen_smart_links_handle_tag_action` filter; and
+- the `aspen_smart_links_tag_action` action.
+
+The standalone Aspen Smart Links user-meta fallback and automatic FluentCRM contact-creation behavior are not included.
+
+After confirming your existing `[crm_tag_button]` usage works with KitMage FluentCRM Tagger, the standalone Aspen Smart Links plugin is no longer required for that functionality.
+
+## Developer hooks
+
+### `aspen_smart_links_handle_tag_action`
+
+Allows another integration to take over a `[crm_tag_button]` tag action.
+
+Return `null` to let KitMage FluentCRM Tagger handle the action normally. Return `true` or `false` to mark the action as externally handled.
+
+Arguments:
+
+```text
+$handled
+$user_id
+$action
+$tag_id
+$context
+```
+
+### `aspen_smart_links_tag_action`
+
+Runs after a `[crm_tag_button]` action has been processed.
+
+Arguments:
+
+```text
+$user_id
+$action
+$tag_id
+$result
+$context
+```
 
 ## Troubleshooting
 
-- **A link does not update a tag:** Confirm that the visitor is logged in, FluentCRM is active, the user has a FluentCRM contact, and the URL contains a positive numeric tag ID.
-- **Restricted content never appears:** Check the contact's assigned tags and verify that you used tag IDs rather than names. The default behavior is to hide content if contact data is unavailable.
-- **A redirect does not run:** Confirm that `tag_id` and `destination` are present, the contact matches the expression, and the destination is allowed by WordPress. Put the shortcode earlier in the page to improve the chance of an HTTP redirect.
-- **A URL already has query parameters:** Add the first plugin parameter with `&` instead of another `?`, for example `https://example.com/page/?source=email&fcrm_tag=4`.
+**A URL does not add or remove a tag**
+
+Confirm:
+
+- the visitor is logged in;
+- FluentCRM is active;
+- the WordPress user has a corresponding FluentCRM contact; and
+- the tag ID is a positive integer.
+
+**A tag-action button does not appear**
+
+`[crm_tag_button]` returns no output for logged-out visitors or when `action` / `tag_id` is invalid.
+
+**The button tags the user but does not reach an external URL**
+
+External destinations are opened with JavaScript and may be affected by browser popup restrictions.
+
+**Restricted content never appears**
+
+Check the contact's assigned FluentCRM tag IDs and verify the expression syntax. Tag names are not accepted.
+
+**An AND expression does not work**
+
+Use `+`:
+
+```text
+4+!24
+```
+
+rather than relying on `&` in shortcode content.
+
+**A redirect does not run**
+
+Confirm:
+
+- `tag_id` and `destination` are present;
+- the current contact matches the expression; and
+- WordPress allows the destination host.
+
+Place `[crm_tag_redirect]` as early as practical in the page content or template so an HTTP redirect can occur before output begins.
 
 ## License
 
