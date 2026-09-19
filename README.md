@@ -3,6 +3,7 @@
 KitMage FluentCRM Tagger connects logged-in WordPress users to their FluentCRM contact record. With it, you can:
 
 - add or remove a FluentCRM tag when someone follows a link;
+- render Smart Links-style buttons that tag/untag and then redirect;
 - show or hide page content based on a contact's tags; and
 - redirect contacts based on their tags.
 
@@ -69,6 +70,28 @@ The plugin adds tag `8` first and then removes tag `4`. If both parameters conta
 > **Important:** Visiting one of these URLs changes contact data. Share action links only with people who should be able to perform that action on their own contact record.
 
 Tag actions are ignored when the visitor is logged out, the request is for a WordPress admin page, FluentCRM is unavailable, the user has no FluentCRM contact, or the tag ID is not a positive number.
+
+## Tag-action buttons
+
+The plugin also includes the Aspen Smart Links button behavior. Existing crm_tag_button shortcode syntax can be used without changing your page content.
+
+Add a tag and continue to another page:
+
+    [crm_tag_button text="Next Lesson" action="add" tag_id="12" url="/lesson-2/"]
+
+Remove a tag:
+
+    [crm_tag_button text="Leave Program" action="remove" tag_id="12" url="/account/"]
+
+You may add one or more CSS classes with the class attribute:
+
+    [crm_tag_button text="Continue" action="add" tag_id="12" url="/next/" class="button button-primary"]
+
+For internal URLs, the tag action is processed and the current tab redirects to the destination. For external HTTP/HTTPS URLs, the external destination is opened in a new tab while the current tab processes the tag action and returns to the current page.
+
+Button actions are nonce-protected, only render for logged-in users, prevent double-submission in JavaScript, and fail silently if FluentCRM or the current contact is unavailable.
+
+Migration note: the shortcode name, asl_* request fields, AspenSmartLinks JavaScript object, and aspen_smart_links_tag_action / aspen_smart_links_handle_tag_action hooks are preserved for compatibility. The standalone Smart Links user-meta fallback and automatic contact-creation behavior are intentionally not included; FluentCRM remains the source of truth in this plugin.
 
 ## Show or hide content by tag
 
