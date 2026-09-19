@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       KitMage FluentCRM Tagger
- * Description:       Adds or removes FluentCRM tags for logged-in contacts using URL query parameters.
- * Version:           1.0.0
+ * Description:       Adds/removes FluentCRM tags for logged-in contacts and provides tag-aware links and shortcodes.
+ * Version:           1.1.0
  * Requires at least: 5.2
  * Requires PHP:      7.0
  * Author: Mike@KitMage
@@ -16,6 +16,11 @@
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
+}
+
+
+if ( ! defined( 'KITMAGE_FLUENTCRM_TAGGER_VERSION' ) ) {
+	define( 'KITMAGE_FLUENTCRM_TAGGER_VERSION', '1.1.0' );
 }
 
 /**
@@ -71,6 +76,329 @@ function kitmage_fluentcrm_tagger_handle_url_action() {
 	}
 }
 add_action( 'template_redirect', 'kitmage_fluentcrm_tagger_handle_url_action', 1 );
+
+
+/**
+ * Registers the Smart Links frontend script.
+ *
+ * The script is enqueued only when the crm_tag_button shortcode renders.
+ *
+ * @return void
+ */
+function kitmage_fluentcrm_tagger_register_assets() {
+	wp_register_script(
+		'kitmage-fluentcrm-tagger-smart-links',
+		plugin_dir_url( __FILE__ ) . 'assets/js/aspen-smart-links.js',
+		array(),
+		KITMAGE_FLUENTCRM_TAGGER_VERSION,
+		true
+	);
+
+	// Preserve the original object name for compatibility with Aspen Smart Links behavior.
+	wp_localize_script(
+		'kitmage-fluentcrm-tagger-smart-links',
+		'AspenSmartLinks',
+		array(
+			'loadingText' => __( 'Loading...', 'kitmage-fluentcrm-tagger' ),
+		)
+	);
+}
+add_action( 'wp_enqueue_scripts', 'kitmage_fluentcrm_tagger_register_assets' );
+
+/**
+ * Applies one tag action for the current FluentCRM contact.
+ *
+ * @param string $action add|remove.
+ * @param int    $tag_id FluentCRM tag ID.
+ * @return bool
+ */
+function kitmage_fluentcrm_tagger_apply_button_tag_action( $action, $tag_id ) {
+	$action = sanitize_key( (string) $action );
+	$tag_id = absint( $tag_id );
+
+	if ( ! is_user_logged_in() || ! in_array( $action, array( 'add', 'remove' ), true ) || $tag_id < 1 ) {
+		return false;
+	}
+
+	if ( ! function_exists( 'fluentcrm_get_current_contact' ) ) {
+		return false;
+	}
+
+	$contact = fluentcrm_get_current_contact();
+
+	if ( ! $contact ) {
+		return false;
+	}
+
+	try {
+		if ( 'add' === $action ) {
+			$contact->attachTags( array( $tag_id ) );
+		} else {
+			$contact->detachTags( array( $tag_id ) );
+		}
+	} catch ( Throwable $exception ) {
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * Returns the current frontend URL.
+ *
+ * @return string
+ */
+function kitmage_fluentcrm_tagger_get_current_url() {
+	$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '/';
+	return home_url( add_query_arg( array(), $request_uri ) );
+}
+
+/**
+ * Sanitizes a whitespace-delimited CSS class list.
+ *
+ * @param string $class_list CSS classes.
+ * @return string
+ */
+function kitmage_fluentcrm_tagger_sanitize_class_list( $class_list ) {
+	$class_list = trim( (string) $class_list );
+
+	if ( '' === $class_list ) {
+		return '';
+	}
+
+	$classes = preg_split( '/\\s+/', $class_list );
+	$classes = is_array( $classes ) ? $classes : array();
+	$classes = array_filter( array_map( 'sanitize_html_class', $classes ) );
+
+	return implode( ' ', $classes );
+}
+
+/**
+ * Determines whether a URL points to a different host than the WordPress home URL.
+ *
+ * @param string $url URL to inspect.
+ * @return bool
+ */
+function kitmage_fluentcrm_tagger_is_external_url( $url ) {
+	$url_parts  = wp_parse_url( $url );
+	$site_parts = wp_parse_url( home_url() );
+
+	if ( empty( $url_parts ) || empty( $site_parts ) ) {
+		return false;
+	}
+
+	$url_host  = isset( $url_parts['host'] ) ? strtolower( (string) $url_parts['host'] ) : '';
+	$site_host = isset( $site_parts['host'] ) ? strtolower( (string) $site_parts['host'] ) : '';
+
+	if ( '' === $url_host ) {
+		return false;
+	}
+
+	if ( 0 === strpos( $url_host, 'www.' ) ) {
+		$url_host = substr( $url_host, 4 );
+	}
+
+	if ( 0 === strpos( $site_host, 'www.' ) ) {
+		$site_host = substr( $site_host, 4 );
+	}
+
+	return '' !== $site_host && $url_host !== $site_host;
+}
+
+/**
+ * Normalizes a site-internal URL/path.
+ *
+ * @param string $url URL or path.
+ * @return string
+ */
+function kitmage_fluentcrm_tagger_normalize_internal_url( $url ) {
+	$url = trim( (string) $url );
+
+	if ( '' === $url ) {
+		return '/';
+	}
+
+	$parts = wp_parse_url( $url );
+
+	if ( is_array( $parts ) && ( isset( $parts['scheme'] ) || isset( $parts['host'] ) ) ) {
+		return $url;
+	}
+
+	if ( 0 === strpos( $url, '?' ) || 0 === strpos( $url, '#' ) ) {
+		return home_url( '/' ) . $url;
+	}
+
+	if ( 0 !== strpos( $url, '/' ) ) {
+		$url = '/' . $url;
+	}
+
+	return $url;
+}
+
+/**
+ * Redirects to a validated safe location and exits.
+ *
+ * @param string $redirect Redirect target.
+ * @return void
+ */
+function kitmage_fluentcrm_tagger_safe_redirect( $redirect = '' ) {
+	$redirect = trim( (string) $redirect );
+
+	if ( '' === $redirect ) {
+		$redirect = wp_get_referer();
+	}
+
+	if ( '' === $redirect || false === $redirect ) {
+		$redirect = home_url( '/' );
+	}
+
+	$redirect = wp_validate_redirect( $redirect, home_url( '/' ) );
+
+	wp_safe_redirect( $redirect );
+	exit;
+}
+
+/**
+ * Renders a button that adds/removes a tag and then redirects.
+ *
+ * Shortcode syntax is compatible with Aspen Smart Links.
+ *
+ * @param array $attributes Shortcode attributes.
+ * @return string
+ */
+function kitmage_fluentcrm_tagger_render_tag_button( $attributes ) {
+	$attributes = shortcode_atts(
+		array(
+			'text'   => __( 'Continue', 'kitmage-fluentcrm-tagger' ),
+			'action' => '',
+			'tag_id' => '',
+			'url'    => '/',
+			'class'  => '',
+		),
+		$attributes,
+		'crm_tag_button'
+	);
+
+	if ( ! is_user_logged_in() ) {
+		return '';
+	}
+
+	$text   = sanitize_text_field( $attributes['text'] );
+	$action = sanitize_key( $attributes['action'] );
+	$tag_id = absint( $attributes['tag_id'] );
+	$url    = trim( (string) $attributes['url'] );
+	$class  = kitmage_fluentcrm_tagger_sanitize_class_list( $attributes['class'] );
+
+	if ( ! in_array( $action, array( 'add', 'remove' ), true ) || $tag_id < 1 ) {
+		return '';
+	}
+
+	$url = '' === $url ? '/' : esc_url_raw( $url, array( 'http', 'https' ) );
+	$url = '' === $url ? '/' : $url;
+
+	$is_external = kitmage_fluentcrm_tagger_is_external_url( $url );
+
+	if ( ! $is_external ) {
+		$url = kitmage_fluentcrm_tagger_normalize_internal_url( $url );
+	}
+
+	$form_id = function_exists( 'wp_unique_id' )
+		? wp_unique_id( 'kitmage-fcrm-tag-button-' )
+		: 'kitmage-fcrm-tag-button-' . wp_generate_password( 8, false, false );
+
+	wp_enqueue_script( 'kitmage-fluentcrm-tagger-smart-links' );
+
+	$current_url     = kitmage_fluentcrm_tagger_get_current_url();
+	$redirect_target = $is_external ? $current_url : $url;
+	$nonce_action    = 'aspen_smart_links|' . $action . '|' . $tag_id;
+	$nonce_value     = wp_create_nonce( $nonce_action );
+
+	ob_start();
+	?>
+	<form
+		method="get"
+		id="<?php echo esc_attr( $form_id ); ?>"
+		action="<?php echo esc_url( $current_url ); ?>"
+		style="display:inline;"
+		data-aspen-smart-links="1"
+		<?php if ( $is_external ) : ?>
+			data-aspen-external-url="<?php echo esc_url( $url ); ?>"
+		<?php endif; ?>
+	>
+		<input type="hidden" name="asl_action" value="<?php echo esc_attr( $action ); ?>">
+		<input type="hidden" name="asl_tag_id" value="<?php echo esc_attr( $tag_id ); ?>">
+		<input type="hidden" name="asl_redirect" value="<?php echo esc_attr( rawurlencode( $redirect_target ) ); ?>">
+		<input type="hidden" name="_aspen_smart_links_nonce" value="<?php echo esc_attr( $nonce_value ); ?>">
+
+		<button type="submit" <?php echo '' !== $class ? 'class="' . esc_attr( $class ) . '"' : ''; ?>>
+			<?php echo esc_html( $text ); ?>
+		</button>
+	</form>
+	<?php
+	return (string) ob_get_clean();
+}
+add_shortcode( 'crm_tag_button', 'kitmage_fluentcrm_tagger_render_tag_button' );
+
+/**
+ * Handles nonce-protected tag button requests.
+ *
+ * Aspen Smart Links query names and nonce action are preserved for migration compatibility.
+ *
+ * @return void
+ */
+function kitmage_fluentcrm_tagger_handle_tag_button_action() {
+	if ( empty( $_GET['asl_action'] ) || empty( $_GET['asl_tag_id'] ) || empty( $_GET['_aspen_smart_links_nonce'] ) ) {
+		return;
+	}
+
+	$current_url = kitmage_fluentcrm_tagger_get_current_url();
+	$clean_url   = remove_query_arg(
+		array(
+			'asl_action',
+			'asl_tag_id',
+			'asl_redirect',
+			'_aspen_smart_links_nonce',
+		),
+		$current_url
+	);
+
+	if ( ! is_user_logged_in() ) {
+		wp_safe_redirect( wp_login_url( $clean_url ) );
+		exit;
+	}
+
+	$action = sanitize_key( (string) wp_unslash( $_GET['asl_action'] ) );
+	$tag_id = absint( wp_unslash( $_GET['asl_tag_id'] ) );
+	$nonce  = sanitize_text_field( (string) wp_unslash( $_GET['_aspen_smart_links_nonce'] ) );
+
+	if ( ! in_array( $action, array( 'add', 'remove' ), true ) || $tag_id < 1 ) {
+		kitmage_fluentcrm_tagger_safe_redirect( $clean_url );
+	}
+
+	if ( ! wp_verify_nonce( $nonce, 'aspen_smart_links|' . $action . '|' . $tag_id ) ) {
+		kitmage_fluentcrm_tagger_safe_redirect( $clean_url );
+	}
+
+	$redirect = isset( $_GET['asl_redirect'] ) && is_scalar( $_GET['asl_redirect'] )
+		? rawurldecode( (string) wp_unslash( $_GET['asl_redirect'] ) )
+		: '';
+
+	$user_id = get_current_user_id();
+	$context = array(
+		'request_action' => 'template_redirect',
+		'referer'        => wp_get_referer(),
+	);
+
+	$handled = apply_filters( 'aspen_smart_links_handle_tag_action', null, $user_id, $action, $tag_id, $context );
+	$result  = null !== $handled
+		? (bool) $handled
+		: kitmage_fluentcrm_tagger_apply_button_tag_action( $action, $tag_id );
+
+	do_action( 'aspen_smart_links_tag_action', $user_id, $action, $tag_id, $result, $context );
+
+	kitmage_fluentcrm_tagger_safe_redirect( '' !== $redirect ? $redirect : $clean_url );
+}
+add_action( 'template_redirect', 'kitmage_fluentcrm_tagger_handle_tag_button_action', 1 );
 
 /**
  * Renders shortcode content according to the current contact's FluentCRM tags.
