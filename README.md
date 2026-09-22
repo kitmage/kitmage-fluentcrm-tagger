@@ -9,7 +9,7 @@ It can:
 - show or hide content based on FluentCRM tag conditions; and
 - redirect users based on FluentCRM tag conditions.
 
-The plugin has no settings screen. Everything is configured with URL query parameters and WordPress shortcodes.
+Configure URL access rules in **CRM Redirects** in the WordPress admin menu. Other features use URL query parameters and WordPress shortcodes.
 
 ## Requirements
 
@@ -471,3 +471,17 @@ Place `[crm_tag_redirect]` as early as practical in the page content or template
 ## License
 
 KitMage FluentCRM Tagger is licensed under the [GNU General Public License v2.0 or later](https://www.gnu.org/licenses/gpl-2.0.html).
+
+## Admin URL redirect rules (1.2.0)
+
+Open **CRM Redirects** as an administrator. Each row contains a partial path (for example `/courses/premium`), comma-separated FluentCRM tag IDs (`12,34`), and a target (`/join/` or a full HTTP/HTTPS URL). Save Changes to apply the rules. Add rule creates more rows; clear every field in a row and save to remove it. Invalid submissions preserve the previous rules.
+
+Paths use case-sensitive substring matching, including decoded slugs; query strings are ignored. Rules run in displayed order and the first matching rule decides access. A logged-in contact with **any** listed tag continues normally. Guests, missing contacts, unavailable FluentCRM, and tag lookup failures receive a temporary HTTP 302 redirect. Administrators visiting the frontend follow the same rules.
+
+Rules run before the existing URL/button tag actions. All configured same-host destination paths are public exemptions (ignoring query strings and trailing slashes) to avoid redirect loops. Choose dedicated landing pages outside the restricted content. External HTTP/HTTPS targets explicitly saved by an administrator are supported.
+
+Admin, AJAX, cron, and REST requests are excluded. These rules apply to WordPress frontend template requests, not direct media files or API access. Matching responses send no-cache headers, but **exclude matching paths from full-page and CDN caches** because caches can serve responses before WordPress executes. Existing tag-changing URLs and buttons still let users change their own tags on unrestricted pages; do not treat those tags as immutable purchase/authorization records.
+
+### 1.2.1
+
+Fixed rules ending in `/` failing to match the page itself. Matching now treats request paths with and without trailing slashes consistently, while retaining path-segment boundaries. Existing saved rules need no changes.
